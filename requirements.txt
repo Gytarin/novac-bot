@@ -1,7 +1,7 @@
-# Telegram bot framework
+# Библиотеки для Telegram бота
 aiogram==3.4.1
 
-# Асинхронные библиотеки
+# Асинхронные зависимости
 aiohttp==3.9.5
 aiofiles==23.2.1
 aiosignal==1.4.0
@@ -9,14 +9,10 @@ multidict==6.0.4
 yarl==1.9.2
 frozenlist==1.3.3
 attrs==23.1.0
-
-# Фильтры и утилиты для aiogram
 magic-filter==1.0.12
 
-# Pydantic и совместимые версии pydantic-core
-pydantic==2.5.3
-pydantic-core==2.14.5
-annotated-types==0.7.0
+# Pydantic без Rust
+pydantic==1.10.12
 
-# Дополнительно (если нужны типы)
-typing-extensions==4.15.0
+# Если нужно, добавь typing-extensions
+typing-extensions==4.5.0
