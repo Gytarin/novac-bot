@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import re
@@ -6,9 +7,9 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 
 # =========================
-# ❗ ВАЖНО: ЗАПОЛНИТЕ СВОИ ДАННЫЕ
+# ❗ ВАЖНО: Токен теперь берётся из Environment Variable
 # =========================
-TOKEN = "8525113234:AAGlmmXn6ZtT_f0wsQReAXIPB3Zwz09H4Hg"
+TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 548463456  # ← Вставьте ваш Telegram ID
 
 bot = Bot(token=TOKEN)
@@ -233,9 +234,8 @@ async def get_contact(message: types.Message):
     user_data[user_id]["step"] = "done"
 
 # =========================
-# ⚠️ ПОЛНЫЙ ПЕРЕХОД НА WEBHOOK
+# ⚠️ Webhook: polling отключен
 # =========================
-# Удаляем или комментируем polling
-# if __name__ == "__main__":
-#     logging.basicConfig(level=logging.INFO)
-#     asyncio.run(dp.start_polling(bot))
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    print("⚠️ Запуск через polling отключён. Используйте webhook через app.py")
