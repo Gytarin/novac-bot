@@ -21,4 +21,4 @@ COPY . .
 ENV PORT=10000
 
 # Команда запуска uvicorn
-CMD ["sh", "-c", "uvicorn bot:app --host 0.0.0.0 --port $PORT"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "10000"]
