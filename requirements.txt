@@ -20,4 +20,3 @@ annotated-types==0.7.0
 
 # Дополнительно (если нужны типы)
 typing-extensions==4.15.0
-
