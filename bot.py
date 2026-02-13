@@ -25,7 +25,7 @@ def currency_keyboard():
         [
             InlineKeyboardButton(text="💵 Доллар", callback_data="currency_usd"),
             InlineKeyboardButton(text="💶 Евро", callback_data="currency_eur"),
-            InlineKeyboardButton(text="💷 Дирхам", callback_data="currency_aed"),
+            InlineKeyboardButton(text="💷 Дирхам", callback_data="currency_aed")
         ],
         [InlineKeyboardButton(text="🇨🇳 Юань", callback_data="currency_cny")]
     ])
@@ -54,7 +54,7 @@ commission_rates = {
 def calculate_commission(currency, amount):
     for lower, upper, rate in commission_rates[currency]:
         if lower <= amount <= upper:
-            return rate, round(amount * rate, 2)
+            return rate, round(amount * rate)
     return 0, 0
 
 def format_number(n):
@@ -104,7 +104,7 @@ async def process_currency(callback: types.CallbackQuery):
 
     await callback.message.edit_text(
         f"💳 Вы выбрали: <b>{user_data[user_id]['currency']}</b>\n\n"
-        f"Введите сумму перевода в цифрах (например: 1 330 700)",
+        f"Введите сумму перевода в цифрах (например: 1 330 700):",
         parse_mode="HTML"
     )
 
@@ -130,9 +130,9 @@ async def process_amount(message: types.Message):
     if user_id not in user_data or user_data[user_id].get("step") != "amount":
         return
 
-    raw_text = message.text.replace(" ", "").replace(",", "")
+    raw_text = re.sub(r"[^\d]", "", message.text)
     try:
-        amount = float(raw_text)
+        amount = int(raw_text)
         if amount < MIN_AMOUNT:
             await message.answer(f"❌ Минимальная сумма должна быть больше {format_number(MIN_AMOUNT)}")
             return
@@ -140,16 +140,21 @@ async def process_amount(message: types.Message):
         await message.answer("❌ Введите корректную сумму числом (например: 1 330 700)")
         return
 
-    user_data[user_id]["amount"] = amount
     currency = user_data[user_id]["currency"]
     rate, commission = calculate_commission(currency, amount)
     total = amount + commission
-    user_data[user_id].update({"commission": commission, "total": total, "step": "calculated"})
+
+    user_data[user_id].update({
+        "amount": amount,
+        "commission": commission,
+        "total": total,
+        "step": "calculated"
+    })
 
     await message.answer(
         f"💳 Валюта: {currency}\n"
         f"💰 Сумма перевода: {format_number(amount)}\n"
-        f"📊 Комиссия: {format_number(commission)}\n"
+        f"📊 Комиссия: {rate*100:.2f}% ({format_number(commission)})\n"
         f"💸 Итог к оплате: {format_number(total)}\n\n"
         f"🔥 Для индивидуальных условий рекомендуем:\n"
         f"🌐 Перейти и заполнить [форму на сайте](https://novacpay.ru/?utm_source=bot)\n\n"
