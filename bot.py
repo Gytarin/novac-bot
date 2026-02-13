@@ -1,11 +1,9 @@
 import asyncio
 import logging
+import re
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardRemove
-)
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 
 # =========================
 # ❗ ВАЖНО: ЗАПОЛНИТЕ СВОИ ДАННЫЕ
@@ -17,6 +15,8 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 user_data = {}
 
+MIN_AMOUNT = 10000
+
 # =========================
 # КЛАВИАТУРЫ
 # =========================
@@ -25,7 +25,7 @@ def currency_keyboard():
         [
             InlineKeyboardButton(text="💵 Доллар", callback_data="currency_usd"),
             InlineKeyboardButton(text="💶 Евро", callback_data="currency_eur"),
-            InlineKeyboardButton(text="🇦🇪 Дирхам", callback_data="currency_aed")
+            InlineKeyboardButton(text="💷 Дирхам", callback_data="currency_aed"),
         ],
         [InlineKeyboardButton(text="🇨🇳 Юань", callback_data="currency_cny")]
     ])
@@ -33,12 +33,12 @@ def currency_keyboard():
 def post_calc_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📲 Оставить заявку", callback_data="leave_lead")],
-        [InlineKeyboardButton(text="↩️ Сделать ещё расчет", callback_data="restart")]
+        [InlineKeyboardButton(text="↩️ Сделать ещё расчёт", callback_data="restart")]
     ])
 
 def restart_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="↩️ Сделать ещё расчет", callback_data="restart")]
+        [InlineKeyboardButton(text="↩️ Сделать ещё расчёт", callback_data="restart")]
     ])
 
 # =========================
@@ -58,7 +58,7 @@ def calculate_commission(currency, amount):
     return 0, 0
 
 def format_number(n):
-    return f"{int(n):,}".replace(",", " ")  # узкий пробел для красоты
+    return f"{int(n):,}".replace(",", " ")  # узкий пробел
 
 # =========================
 # START
@@ -67,8 +67,8 @@ def format_number(n):
 async def start_handler(message: types.Message):
     user_data[message.from_user.id] = {"step": "currency"}
 
+    username = f"@{message.from_user.username}" if message.from_user.username else "без username"
     try:
-        username = f"@{message.from_user.username}" if message.from_user.username else "без username"
         await bot.send_message(
             ADMIN_ID,
             f"🟢 Новый старт бота\n\n"
@@ -103,23 +103,93 @@ async def process_currency(callback: types.CallbackQuery):
     user_data[user_id] = {"currency": currency_map[callback.data], "step": "amount"}
 
     await callback.message.edit_text(
-        f"💰 Вы выбрали: <b>{user_data[user_id]['currency']}</b>\n\n"
-        "Введите сумму перевода в цифрах (например: 1 330 700):",
+        f"💳 Вы выбрали: <b>{user_data[user_id]['currency']}</b>\n\n"
+        f"Введите сумму перевода в цифрах (например: 1 330 700)",
         parse_mode="HTML"
     )
 
 # =========================
 # ПОВТОРНЫЙ РАСЧЕТ
 # =========================
-@dp.callback_query(lambda c: c.data in ["restart"])
+@dp.callback_query(lambda c: c.data == "restart")
 async def restart_calc(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     await callback.answer()
     await callback.message.edit_text(
-        "↩️ Выберите валюту для нового расчета:",
+        "↩️ Выберите валюту для нового расчёта:",
         reply_markup=currency_keyboard()
     )
     user_data[user_id]["step"] = "currency"
+
+# =========================
+# ОБРАБОТКА СУММЫ
+# =========================
+@dp.message(lambda message: message.contact is None)
+async def process_amount(message: types.Message):
+    user_id = message.from_user.id
+    if user_id not in user_data or user_data[user_id].get("step") != "amount":
+        return
+
+    raw_text = message.text.replace(" ", "").replace(",", "")
+    try:
+        amount = float(raw_text)
+        if amount < MIN_AMOUNT:
+            await message.answer(f"❌ Минимальная сумма должна быть больше {format_number(MIN_AMOUNT)}")
+            return
+    except ValueError:
+        await message.answer("❌ Введите корректную сумму числом (например: 1 330 700)")
+        return
+
+    user_data[user_id]["amount"] = amount
+    currency = user_data[user_id]["currency"]
+    rate, commission = calculate_commission(currency, amount)
+    total = amount + commission
+    user_data[user_id].update({"commission": commission, "total": total, "step": "calculated"})
+
+    await message.answer(
+        f"💳 Валюта: {currency}\n"
+        f"💰 Сумма перевода: {format_number(amount)}\n"
+        f"📊 Комиссия: {format_number(commission)}\n"
+        f"💸 Итог к оплате: {format_number(total)}\n\n"
+        f"🔥 Для индивидуальных условий рекомендуем:\n"
+        f"🌐 Перейти и заполнить [форму на сайте](https://novacpay.ru/?utm_source=bot)\n\n"
+        f"Или оставить заявку прямо здесь по кнопке ниже ⬇️",
+        reply_markup=post_calc_keyboard(),
+        parse_mode="Markdown"
+    )
+
+# =========================
+# ОБРАБОТКА ЗАЯВКИ
+# =========================
+@dp.callback_query(lambda c: c.data == "leave_lead")
+async def leave_lead(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    data = user_data.get(user_id, {})
+    if not data or data.get("step") != "calculated":
+        return
+
+    username = f"@{callback.from_user.username}" if callback.from_user.username else "нет username"
+
+    try:
+        await bot.send_message(
+            ADMIN_ID,
+            f"🔥 <b>НОВАЯ ЗАЯВКА!</b>\n\n"
+            f"👤 Username: {username}\n"
+            f"💳 Валюта: {data.get('currency')}\n"
+            f"💰 Сумма: {format_number(data.get('amount', 0))}\n"
+            f"📊 Комиссия: {format_number(data.get('commission', 0))}\n"
+            f"💸 Итого: {format_number(data.get('total', 0))}",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logging.warning(f"Ошибка отправки заявки: {e}")
+
+    await callback.message.edit_text(
+        "✅ Спасибо! Ваша заявка успешно отправлена.\n"
+        "Наши менеджеры свяжутся с вами в ближайшее время.",
+        reply_markup=restart_keyboard()
+    )
+    user_data[user_id]["step"] = "done"
 
 # =========================
 # ОБРАБОТКА КОНТАКТА
@@ -133,61 +203,29 @@ async def get_contact(message: types.Message):
     username = message.from_user.username or "нет username"
 
     try:
-        await bot.send_message(ADMIN_ID, 
+        await bot.send_message(
+            ADMIN_ID,
             f"🔥 <b>НОВЫЙ ЛИД!</b>\n\n"
             f"👤 Username: @{username}\n"
             f"📱 Телефон: {phone}\n"
-            f"💳 Валюта: {data.get('currency', 'не выбрана')}\n"
+            f"💳 Валюта: {data.get('currency','не выбрана')}\n"
             f"💰 Сумма: {format_number(data.get('amount',0))}\n"
-            f"📊 Комиссия: {data.get('commission','не рассчитана')}", 
+            f"📊 Комиссия: {format_number(data.get('commission',0))}",
             parse_mode="HTML"
         )
     except Exception as e:
-        await message.answer(f"❌ Ошибка отправки заявки администратору: {e}")
+        logging.warning(f"Ошибка отправки контакта: {e}")
 
     await message.answer(
         "✅ Спасибо! Ваша заявка успешно отправлена.\n"
         "Наши менеджеры свяжутся с вами в ближайшее время.",
         reply_markup=ReplyKeyboardRemove()
     )
-
     await message.answer(
-        "↩️ Вы можете сделать ещё один расчет:",
+        "↩️ Вы можете сделать ещё один расчёт:",
         reply_markup=restart_keyboard()
     )
-
     user_data[user_id]["step"] = "done"
-
-# =========================
-# ОБРАБОТКА СУММЫ
-# =========================
-@dp.message(lambda message: message.contact is None)
-async def process_amount(message: types.Message):
-    user_id = message.from_user.id
-    if user_id not in user_data or user_data[user_id].get("step") != "amount":
-        return
-
-    try:
-        raw_text = message.text.replace(" ", "").replace(",", "")
-        amount = float(raw_text)
-        if amount < 10000:
-            await message.answer("❌ Минимальная сумма должна быть больше 10 000")
-            return
-    except ValueError:
-        await message.answer("❌ Введите корректную сумму числом (например: 1 330 700)")
-        return
-
-    user_data[user_id]["amount"] = amount
-    currency = user_data[user_id]["currency"]
-    rate, commission = calculate_commission(currency, amount)
-    user_data[user_id]["commission"] = commission
-
-    await message.answer(
-        f"💰 Сумма перевода: {format_number(amount)} {currency}\n"
-        f"💳 Комиссия: {format_number(commission)} {currency}\n\n"
-        "Что вы хотите сделать дальше?",
-        reply_markup=post_calc_keyboard()
-    )
 
 # =========================
 # RUN
