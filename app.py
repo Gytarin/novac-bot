@@ -1,29 +1,30 @@
 import os
-import logging
-import asyncio
 from fastapi import FastAPI, Request
-from bot import bot, dp  # импортируем существующие bot и dp из bot.py
+from aiogram import Bot, Dispatcher
 from aiogram.types import Update
+from bot import dp, bot  # импортируем твой bot и dp из bot.py
 
-PORT = int(os.getenv("PORT", 10000))
-HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+# Настройка
 TOKEN = os.getenv("BOT_TOKEN")
+HOSTNAME = os.getenv("RENDER_EXTERNAL_URL")  # Render автоматически даёт эту переменную
 WEBHOOK_PATH = f"/webhook/{TOKEN}"
-WEBHOOK_URL = f"https://{HOSTNAME}{WEBHOOK_PATH}"
+WEBHOOK_URL = f"{HOSTNAME}{WEBHOOK_PATH}"
 
 app = FastAPI()
 
-# Устанавливаем webhook при старте
+# Подключаем webhook
 @app.on_event("startup")
 async def on_startup():
-    await bot.delete_webhook()
     await bot.set_webhook(WEBHOOK_URL)
-    logging.info(f"Webhook установлен: {WEBHOOK_URL}")
 
-# Обработка POST-запросов от Telegram
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot.delete_webhook()
+
+# Точка входа для Telegram
 @app.post(WEBHOOK_PATH)
-async def telegram_webhook(request: Request):
-    data = await request.json()
+async def telegram_webhook(req: Request):
+    data = await req.json()
     update = Update(**data)
     await dp.process_update(update)
     return {"ok": True}
