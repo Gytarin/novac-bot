@@ -233,8 +233,9 @@ async def get_contact(message: types.Message):
     user_data[user_id]["step"] = "done"
 
 # =========================
-# RUN
+# ⚠️ ПОЛНЫЙ ПЕРЕХОД НА WEBHOOK
 # =========================
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(dp.start_polling(bot))
+# Удаляем или комментируем polling
+# if __name__ == "__main__":
+#     logging.basicConfig(level=logging.INFO)
+#     asyncio.run(dp.start_polling(bot))
