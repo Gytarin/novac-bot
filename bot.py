@@ -20,7 +20,7 @@ import aiofiles
 
 from aiogram.utils.token import extract_bot_id, validate_token
 
-from methods import (
+from ..methods import (
     AddStickerToSet,
     AnswerCallbackQuery,
     AnswerInlineQuery,
