@@ -5,6 +5,7 @@ import re
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from aiogram.exceptions import TelegramBadRequest
 
 # =========================
 # ❗ ВАЖНО: Токен теперь берётся из Environment Variable
@@ -59,7 +60,7 @@ def calculate_commission(currency, amount):
     return 0, 0
 
 def format_number(n):
-    return f"{int(n):,}".replace(",", " ")  # узкий пробел
+    return f"{int(n):,}".replace(",", " ")
 
 # =========================
 # START
@@ -95,32 +96,43 @@ async def start_handler(message: types.Message):
 async def process_currency(callback: types.CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+
     currency_map = {
         "currency_usd": "Доллар",
         "currency_eur": "Евро",
         "currency_aed": "Дирхам",
         "currency_cny": "Юань"
     }
+
     user_data[user_id] = {"currency": currency_map[callback.data], "step": "amount"}
 
     await callback.message.edit_text(
         f"💳 Вы выбрали: <b>{user_data[user_id]['currency']}</b>\n\n"
-        f"Введите сумму перевода в цифрах (например: 1 330 700):",
+        f"Введите сумму перевода в цифрах (например: 1 330 700):",
         parse_mode="HTML"
     )
 
 # =========================
-# ПОВТОРНЫЙ РАСЧЕТ
+# ✅ ИСПРАВЛЕННЫЙ ПОВТОРНЫЙ РАСЧЕТ
 # =========================
 @dp.callback_query(lambda c: c.data == "restart")
 async def restart_calc(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    await callback.answer()
-    await callback.message.edit_text(
-        "↩️ Выберите валюту для нового расчёта:",
-        reply_markup=currency_keyboard()
-    )
-    user_data[user_id]["step"] = "currency"
+
+    await callback.answer()  # отвечаем сразу, чтобы не было timeout
+
+    try:
+        await callback.message.edit_text(
+            "↩️ Выберите валюту для нового расчёта:",
+            reply_markup=currency_keyboard()
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            pass  # игнорируем эту ошибку
+        else:
+            raise
+
+    user_data[user_id] = {"step": "currency"}
 
 # =========================
 # ОБРАБОТКА СУММЫ
@@ -138,7 +150,7 @@ async def process_amount(message: types.Message):
             await message.answer(f"❌ Минимальная сумма должна быть больше {format_number(MIN_AMOUNT)}")
             return
     except ValueError:
-        await message.answer("❌ Введите корректную сумму числом (например: 1 330 700)")
+        await message.answer("❌ Введите корректную сумму числом (например: 1 330 700)")
         return
 
     currency = user_data[user_id]["currency"]
@@ -174,6 +186,8 @@ async def leave_lead(callback: types.CallbackQuery):
     if not data or data.get("step") != "calculated":
         return
 
+    await callback.answer()
+
     username = f"@{callback.from_user.username}" if callback.from_user.username else "нет username"
 
     try:
@@ -195,46 +209,11 @@ async def leave_lead(callback: types.CallbackQuery):
         "Наши менеджеры свяжутся с вами в ближайшее время.",
         reply_markup=restart_keyboard()
     )
+
     user_data[user_id]["step"] = "done"
 
 # =========================
-# ОБРАБОТКА КОНТАКТА
-# =========================
-@dp.message(lambda message: message.contact is not None)
-async def get_contact(message: types.Message):
-    user_id = message.from_user.id
-    data = user_data.get(user_id, {})
-
-    phone = message.contact.phone_number
-    username = message.from_user.username or "нет username"
-
-    try:
-        await bot.send_message(
-            ADMIN_ID,
-            f"🔥 <b>НОВЫЙ ЛИД!</b>\n\n"
-            f"👤 Username: @{username}\n"
-            f"📱 Телефон: {phone}\n"
-            f"💳 Валюта: {data.get('currency','не выбрана')}\n"
-            f"💰 Сумма: {format_number(data.get('amount',0))}\n"
-            f"📊 Комиссия: {format_number(data.get('commission',0))}",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logging.warning(f"Ошибка отправки контакта: {e}")
-
-    await message.answer(
-        "✅ Спасибо! Ваша заявка успешно отправлена.\n"
-        "Наши менеджеры свяжутся с вами в ближайшее время.",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    await message.answer(
-        "↩️ Вы можете сделать ещё один расчёт:",
-        reply_markup=restart_keyboard()
-    )
-    user_data[user_id]["step"] = "done"
-
-# =========================
-# ⚠️ Webhook: polling отключен
+# ⚠️ Polling отключён (Webhook)
 # =========================
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
